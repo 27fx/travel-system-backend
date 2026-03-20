@@ -7,10 +7,10 @@
         <version>${revision}</version>
     </parent>
 
-    <artifactId>yudao-module-food</artifactId>
+    <artifactId>yudao-module-hotel</artifactId>
     <packaging>jar</packaging>
 
-    <name>${project.artifactId}</name>
+    <name>yudao-module-hotel</name>
     <url>http://maven.apache.org</url>
 
     <properties>
@@ -21,11 +21,6 @@
         <dependency>
             <groupId>cn.iocoder.boot</groupId>
             <artifactId>yudao-module-infra</artifactId>
-            <version>${revision}</version>
-        </dependency>
-        <dependency>
-            <groupId>cn.iocoder.boot</groupId>
-            <artifactId>yudao-module-system</artifactId>
             <version>${revision}</version>
         </dependency>
 

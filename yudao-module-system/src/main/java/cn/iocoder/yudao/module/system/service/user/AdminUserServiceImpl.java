@@ -140,6 +140,9 @@ public class AdminUserServiceImpl implements AdminUserService {
         user.setStatus(CommonStatusEnum.ENABLE.getStatus()); // 默认开启
         user.setPassword(encodePassword(registerReqVO.getPassword())); // 加密密码
         userMapper.insert(user);
+        //此处设置默认用户为普通用户
+        Set<Long> roleIds = CollUtil.newHashSet(2L);
+        permissionService.assignUserRole(Long.valueOf(user.getId()), roleIds);
         return user.getId();
     }
 

@@ -4,13 +4,13 @@
     <parent>
         <groupId>cn.iocoder.boot</groupId>
         <artifactId>yudao</artifactId>
-        <version>${revision}</version>
+        <version>2026.01-jdk8-SNAPSHOT</version>
     </parent>
 
-    <artifactId>yudao-module-food</artifactId>
+    <artifactId>yudao-module-scenic</artifactId>
     <packaging>jar</packaging>
 
-    <name>${project.artifactId}</name>
+    <name>yudao-module-scenic</name>
     <url>http://maven.apache.org</url>
 
     <properties>
@@ -20,27 +20,19 @@
     <dependencies>
         <dependency>
             <groupId>cn.iocoder.boot</groupId>
-            <artifactId>yudao-module-infra</artifactId>
+            <artifactId>yudao-module-system</artifactId>
             <version>${revision}</version>
         </dependency>
         <dependency>
             <groupId>cn.iocoder.boot</groupId>
-            <artifactId>yudao-module-system</artifactId>
+            <artifactId>yudao-module-infra</artifactId>
             <version>${revision}</version>
         </dependency>
 
         <!-- 业务组件 -->
         <dependency>
             <groupId>cn.iocoder.boot</groupId>
-            <artifactId>yudao-spring-boot-starter-biz-data-permission</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>cn.iocoder.boot</groupId>
             <artifactId>yudao-spring-boot-starter-biz-tenant</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>cn.iocoder.boot</groupId>
-            <artifactId>yudao-spring-boot-starter-biz-ip</artifactId>
         </dependency>
 
         <!-- Web 相关 -->
@@ -65,12 +57,6 @@
             <artifactId>yudao-spring-boot-starter-redis</artifactId>
         </dependency>
 
-        <!-- Job 定时任务相关 -->
-        <dependency>
-            <groupId>cn.iocoder.boot</groupId>
-            <artifactId>yudao-spring-boot-starter-job</artifactId>
-        </dependency>
-
         <!-- 消息队列相关 -->
         <dependency>
             <groupId>cn.iocoder.boot</groupId>
@@ -91,32 +77,8 @@
         </dependency>
 
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-mail</artifactId>
-        </dependency>
-
-        <!-- 三方云服务相关 -->
-        <dependency>
-            <groupId>me.zhyd.oauth</groupId>
-            <artifactId>JustAuth</artifactId> <!-- 社交登陆（例如说，个人微信、企业微信等等） -->
-        </dependency>
-        <dependency>
-            <groupId>com.xkcoding.justauth</groupId>
-            <artifactId>justauth-spring-boot-starter</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>com.github.binarywang</groupId>
-            <artifactId>wx-java-mp-spring-boot-starter</artifactId> <!-- 微信登录（公众号） -->
-        </dependency>
-        <dependency>
-            <groupId>com.github.binarywang</groupId>
-            <artifactId>wx-java-miniapp-spring-boot-starter</artifactId>  <!-- 微信登录（小程序） -->
-        </dependency>
-
-        <dependency>
-            <groupId>com.anji-plus</groupId>
-            <artifactId>captcha-spring-boot-starter</artifactId> <!-- 验证码，一般用于登录使用 -->
+            <groupId>cn.iocoder.boot</groupId>
+            <artifactId>yudao-spring-boot-starter-biz-ip</artifactId>
         </dependency>
     </dependencies>
 </project>
