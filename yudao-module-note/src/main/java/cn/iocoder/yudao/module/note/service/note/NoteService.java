@@ -59,4 +59,5 @@ public interface NoteService {
      */
     PageResult<NotePageRespVO> getNotePage(NotePageReqVO pageReqVO);
 
+    PageResult<NotePageRespVO> getMyNotePage(NotePageReqVO pageReqVO);
 }

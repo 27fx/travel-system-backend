@@ -4,7 +4,7 @@
     <parent>
         <groupId>cn.iocoder.boot</groupId>
         <artifactId>yudao</artifactId>
-        <version>2026.01-jdk8-SNAPSHOT</version>
+        <version>${revision}</version>
     </parent>
 
     <artifactId>yudao-module-route</artifactId>

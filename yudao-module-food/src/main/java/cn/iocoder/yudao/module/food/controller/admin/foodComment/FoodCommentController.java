@@ -26,8 +26,7 @@ public class FoodCommentController {
     @PostMapping
     public CommonResult<Boolean> create(@Valid @RequestBody CommentCreateDTO dto) {
         // 从 Token 解析
-        Long userId = SecurityFrameworkUtils.getLoginUserId();
-        commentService.createComment(dto, userId);
+        commentService.createComment(dto);
         return CommonResult.success(true);
     }
 

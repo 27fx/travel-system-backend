@@ -92,6 +92,17 @@ public class SecurityFrameworkUtils {
     }
 
     /**
+     * 获得当前用户的用户头像，从上下文中
+     *
+     * @return 用户名
+     */
+    @Nullable
+    public static String getLoginUserAvatar() {
+        LoginUser loginUser = getLoginUser();
+        return loginUser != null ? MapUtil.getStr(loginUser.getInfo(), LoginUser.INFO_KEY_AVATAR) : null;
+    }
+
+    /**
      * 获得当前用户的昵称，从上下文中
      *
      * @return 昵称

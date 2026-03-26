@@ -17,7 +17,7 @@
         <module>yudao-module-infra</module>
         <module>yudao-module-food</module>
         <module>yudao-module-hotel</module>
-        <module>yudao-module-member</module>
+<!--        <module>yudao-module-member</module>-->
         <module>yudao-module-note</module>
         <module>yudao-module-route</module>
         <module>yudao-module-scenic</module>

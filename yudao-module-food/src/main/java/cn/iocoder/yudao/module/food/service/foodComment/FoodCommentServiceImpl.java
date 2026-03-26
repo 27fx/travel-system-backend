@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.food.service.foodComment;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.food.controller.admin.foodComment.dto.CommentCreateDTO;
 import cn.iocoder.yudao.module.food.controller.admin.foodComment.vo.CommentVO;
 import cn.iocoder.yudao.module.food.dal.dataobject.food.FoodDO;
@@ -15,6 +16,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.openxmlformats.schemas.spreadsheetml.x2006.main.CommentsDocument;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -25,7 +27,12 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.module.food.enums.ErrorCodeConstants.COMMENTS_NOT_WITH_SCORE;
+import static cn.iocoder.yudao.module.food.enums.ErrorCodeConstants.USER_STATUS_ERROR;
 
 @Slf4j
 @Service
@@ -35,21 +42,24 @@ public class FoodCommentServiceImpl implements FoodCommentService {
     private final FoodCommentMapper commentMapper;
     private final FoodMapper foodMapper;
     private final AdminUserMapper userMapper;
+    private final StringRedisTemplate stringRedisTemplate;
+
+
+    private static final String COMMENT_LIKE_KEY = "comment:like%d";// 美食评分缓存键
+
+    //点赞过期时间
+    private static final long LIKE_EXPIRE_DAYS = 30;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void createComment(CommentCreateDTO dto, Long currentUserId) {
+    public void createComment(CommentCreateDTO dto) {
         // 1. 校验美食是否存在
         FoodDO food = foodMapper.selectById(dto.getFoodId());
         if (food == null || food.getDeleted()) {
             throw new IllegalArgumentException("美食不存在或已删除");
         }
 
-        // 2. 获取当前用户信息 (用于快照)
-        AdminUserDO user = userMapper.selectById(currentUserId);
-        if (user == null || user.getStatus() != 0 || user.getDeleted() ) {
-            throw new IllegalArgumentException("用户状态异常");
-        }
+        // 2. 获取当前用户信息 (用于快照
 
         // 3. 校验父评论 (如果是回复)
         if (dto.getParentId() != null && dto.getParentId() > 0) {
@@ -62,31 +72,30 @@ public class FoodCommentServiceImpl implements FoodCommentService {
         } else {
             // 业务规则：一级评论必须带评分
             if (dto.getScore() == null || dto.getScore().compareTo(BigDecimal.ONE) < 0 || dto.getScore().compareTo(new BigDecimal("5")) > 0) {
-                throw new IllegalArgumentException("一级评论请输入1-5分的评分");
+                throw exception(COMMENTS_NOT_WITH_SCORE);
             }
             // 可选：限制同一用户对同一美食只能发一条一级评论
-            long count = commentMapper.selectCount(new LambdaQueryWrapper<CommentDO>()
-                    .eq(CommentDO::getFoodId, dto.getFoodId())
-                    .eq(CommentDO::getUserId, currentUserId)
-                    .eq(CommentDO::getParentId, 0)
-                    .eq(CommentDO::getDeleted, 0));
-            if (count > 0) {
-                throw new IllegalArgumentException("您已对该美食发表过评论，请勿重复提交");
-            }
+//            long count = commentMapper.selectCount(new LambdaQueryWrapper<CommentDO>()
+//                    .eq(CommentDO::getFoodId, dto.getFoodId())
+//                    .eq(CommentDO::getUserId, currentUserId)
+//                    .eq(CommentDO::getParentId, 0)
+//                    .eq(CommentDO::getDeleted, 0));
+//            if (count > 0) {
+//                throw new IllegalArgumentException("您已对该美食发表过评论，请勿重复提交");
+//            }
         }
 
         // 4. 构建评论实体
         CommentDO comment = new CommentDO();
         comment.setFoodId(dto.getFoodId());
-        comment.setUserId(currentUserId);
-        comment.setUserName(user.getNickname()); // 【关键】用户昵称快照
-        comment.setUserAvatar(user.getAvatar()); // 【关键】用户头像快照
+        comment.setUserId(SecurityFrameworkUtils.getLoginUserId());
+        comment.setUserName(SecurityFrameworkUtils.getLoginUserNickname()); // 【关键】用户昵称快照
+        comment.setUserAvatar(SecurityFrameworkUtils.getLoginUserAvatar()); // 【关键】用户头像快照
         comment.setParentId(dto.getParentId() == null ? 0L : dto.getParentId());
         comment.setContent(dto.getContent());
         comment.setScore(dto.getScore());
         comment.setLikeCount(0);
         comment.setStatus(0); // 默认待审核 (0)，实际可接入自动审核服务直接设为1
-        comment.setCreator(user.getNickname());
         // create_time, update_time, deleted 由 MP 自动填充
 
         commentMapper.insert(comment);
@@ -182,24 +191,41 @@ public class FoodCommentServiceImpl implements FoodCommentService {
         return resultPage;
     }
 
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void toggleLike(Long commentId, Long currentUserId) {
-        // 【重要】生产环境必须使用 Redis (Set结构) 来判断用户是否已点赞，防止重复加
-        // 这里仅演示数据库层面的简易逻辑
-        
         CommentDO comment = commentMapper.selectById(commentId);
         if (comment == null || comment.getDeleted()) {
             throw new IllegalArgumentException("评论不存在");
         }
-        
-        // 简易逻辑：直接 +1 (实际应检查该用户是否已点过)
-        // 真实场景：
-        // 1. check Redis: isLiked(commentId, userId)
-        // 2. if not liked: redis.add, db.increment
-        // 3. else: redis.remove, db.decrement
-        
-        comment.setLikeCount(comment.getLikeCount() + 1);
+
+        String redisKey = String.format(COMMENT_LIKE_KEY, commentId);
+
+        // 1. 检查 Redis 中该用户是否已点赞
+        Boolean isLiked = stringRedisTemplate.opsForSet().isMember(redisKey, currentUserId.toString());
+
+        if (Boolean.TRUE.equals(isLiked)) {
+            // 2.1 如果已点赞，则取消点赞
+            stringRedisTemplate.opsForSet().remove(redisKey, currentUserId.toString());
+
+            // 数据库点赞数 -1
+            int newLikeCount = Math.max(0, comment.getLikeCount() - 1);
+            comment.setLikeCount(newLikeCount);
+            log.info("用户 {} 取消对评论 {} 的点赞，当前点赞数：{}", currentUserId, commentId, newLikeCount);
+        } else {
+            // 2.2 如果未点赞，则添加点赞
+            stringRedisTemplate.opsForSet().add(redisKey, currentUserId.toString());
+
+            // 设置过期时间
+            stringRedisTemplate.expire(redisKey, LIKE_EXPIRE_DAYS, TimeUnit.DAYS);
+
+            // 数据库点赞数 +1
+            int newLikeCount = comment.getLikeCount() + 1;
+            comment.setLikeCount(newLikeCount);
+            log.info("用户 {} 点赞评论 {}，当前点赞数：{}", currentUserId, commentId, newLikeCount);
+        }
+
         comment.setUpdateTime(LocalDateTime.now());
         commentMapper.updateById(comment);
     }
@@ -316,17 +342,8 @@ public class FoodCommentServiceImpl implements FoodCommentService {
      * 实体转 VO
      */
     private CommentVO convertToVO(CommentDO c) {
-        CommentVO vo = new CommentVO();
-        vo.setId(c.getId());
-        vo.setUserId(c.getUserId());
-        vo.setUserName(c.getUserName());
-        vo.setUserAvatar(c.getUserAvatar());
-        vo.setContent(c.getContent());
-        vo.setScore(c.getScore());
-        vo.setLikeCount(c.getLikeCount());
-        vo.setCreateTime(c.getCreateTime());
-        vo.setParentId(c.getParentId()); // 用于内存分组
-        vo.setReplies(new ArrayList<>());
-        return vo;
+        CommentVO bean = BeanUtils.toBean(c, CommentVO.class);
+        bean.setReplies(new ArrayList<>());
+        return bean;
     }
 }

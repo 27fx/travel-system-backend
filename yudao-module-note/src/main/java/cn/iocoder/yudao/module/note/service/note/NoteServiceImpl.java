@@ -89,4 +89,12 @@ public class NoteServiceImpl implements NoteService {
 
     }
 
+    @Override
+    public PageResult<NotePageRespVO> getMyNotePage(NotePageReqVO pageReqVO) {
+        int offset = (pageReqVO.getPageNo() - 1) * pageReqVO.getPageSize();
+        pageReqVO.setUserId(SecurityFrameworkUtils.getLoginUserId());
+        List<NotePageRespVO> list = noteMapper.selectPageList(pageReqVO, offset, pageReqVO.getPageSize());
+        return new PageResult<>(list, noteMapper.selectPageCount(pageReqVO));
+    }
+
 }

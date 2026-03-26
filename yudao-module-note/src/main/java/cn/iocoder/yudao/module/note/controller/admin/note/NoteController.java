@@ -103,4 +103,13 @@ public class NoteController {
     }
 
 
+    @GetMapping("/getMyNotePage")
+    @Operation(summary = "获取我的游记分页")
+    public CommonResult<PageResult<NotePageRespVO>> getMyNotePage(@Valid NotePageReqVO pageReqVO) {
+        this.pageReqVO = pageReqVO;
+        PageResult<NotePageRespVO> pageResult = noteService.getMyNotePage(pageReqVO);
+        return success(pageResult);
+    }
+
+
 }

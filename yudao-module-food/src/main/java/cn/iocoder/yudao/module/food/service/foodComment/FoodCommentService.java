@@ -14,9 +14,9 @@ public interface FoodCommentService {
      * 发布评论或回复
      *
      * @param dto 评论数据传输对象
-     * @param currentUserId 当前登录用户ID
+     *
      */
-    void createComment(CommentCreateDTO dto, Long currentUserId);
+    void createComment(CommentCreateDTO dto);
 
     /**
      * 获取美食评论列表（树形结构）
