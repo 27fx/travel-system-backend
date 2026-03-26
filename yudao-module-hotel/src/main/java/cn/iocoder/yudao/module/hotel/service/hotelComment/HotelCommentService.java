@@ -1,14 +1,14 @@
 package cn.iocoder.yudao.module.hotel.service.hotelComment;
 
-import cn.iocoder.yudao.module.hotel.controller.admin.hotelComment.dto.CommentCreateDTO;
-import cn.iocoder.yudao.module.hotel.controller.admin.hotelComment.vo.CommentVO;
+import cn.iocoder.yudao.module.hotel.controller.admin.hotelComment.dto.HotelCommentCreateDTO;
+import cn.iocoder.yudao.module.hotel.controller.admin.hotelComment.vo.HotelCommentVO;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
 public interface HotelCommentService {
 
-    void createComment(CommentCreateDTO dto, Long currentUserId);
+    void createComment(HotelCommentCreateDTO dto, Long currentUserId);
 
-    Page<CommentVO> getCommentTree(Long hotelId, int page, int size);
+    Page<HotelCommentVO> getCommentTree(Long hotelId, int page, int size);
 
     void toggleLike(Long commentId, Long currentUserId);
 

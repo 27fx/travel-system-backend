@@ -6,7 +6,7 @@ import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 
 @Data
-public class CommentCreateDTO {
+public class FoodCommentCreateDTO {
     @NotNull(message = "美食ID不能为空")
     private Long foodId;
 

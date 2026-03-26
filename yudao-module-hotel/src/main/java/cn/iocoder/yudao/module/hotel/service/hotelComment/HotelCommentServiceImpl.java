@@ -2,8 +2,8 @@ package cn.iocoder.yudao.module.hotel.service.hotelComment;
 import cn.hutool.core.bean.BeanUtil;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
-import cn.iocoder.yudao.module.hotel.controller.admin.hotelComment.dto.CommentCreateDTO;
-import cn.iocoder.yudao.module.hotel.controller.admin.hotelComment.vo.CommentVO;
+import cn.iocoder.yudao.module.hotel.controller.admin.hotelComment.dto.HotelCommentCreateDTO;
+import cn.iocoder.yudao.module.hotel.controller.admin.hotelComment.vo.HotelCommentVO;
 import cn.iocoder.yudao.module.hotel.dal.dataobject.hotel.HotelDO;
 import cn.iocoder.yudao.module.hotel.dal.dataobject.hotelComment.HotelCommentDO;
 import cn.iocoder.yudao.module.hotel.dal.mysql.hotel.HotelMapper;
@@ -29,7 +29,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
-import static cn.iocoder.yudao.framework.common.util.object.BeanUtils.copyProperties;
 import static cn.iocoder.yudao.module.hotel.enums.ErrorCodeConstants.*;
 
 @Slf4j
@@ -47,7 +46,7 @@ public class HotelCommentServiceImpl implements HotelCommentService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void createComment(CommentCreateDTO dto, Long currentUserId) {
+    public void createComment(HotelCommentCreateDTO dto, Long currentUserId) {
         HotelDO hotel = hotelMapper.selectById(dto.getHotelId());
         if (hotel == null || hotel.getDeleted()) {
             throw new IllegalArgumentException("酒店不存在或已删除");
@@ -93,7 +92,7 @@ public class HotelCommentServiceImpl implements HotelCommentService {
     }
 
     @Override
-    public Page<CommentVO> getCommentTree(Long hotelId, int page, int size) {
+    public Page<HotelCommentVO> getCommentTree(Long hotelId, int page, int size) {
         Page<HotelCommentDO> pageParam = new Page<>(page, size);
         LambdaQueryWrapper<HotelCommentDO> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(HotelCommentDO::getHotelId, hotelId)
@@ -106,7 +105,7 @@ public class HotelCommentServiceImpl implements HotelCommentService {
         List<HotelCommentDO> records = commentPage.getRecords();
 
         if (CollectionUtils.isEmpty(records)) {
-            Page<CommentVO> emptyPage = new Page<>();
+            Page<HotelCommentVO> emptyPage = new Page<>();
             emptyPage.setCurrent(page);
             emptyPage.setSize(size);
             emptyPage.setTotal(0);
@@ -114,8 +113,8 @@ public class HotelCommentServiceImpl implements HotelCommentService {
             return emptyPage;
         }
 
-        List<CommentVO> voList = BeanUtil.copyToList(records, CommentVO.class);
-        List<Long> parentIds = voList.stream().map(CommentVO::getId).collect(Collectors.toList());
+        List<HotelCommentVO> voList = BeanUtil.copyToList(records, HotelCommentVO.class);
+        List<Long> parentIds = voList.stream().map(HotelCommentVO::getId).collect(Collectors.toList());
 
         LambdaQueryWrapper<HotelCommentDO> childWrapper = new LambdaQueryWrapper<>();
         childWrapper.in(HotelCommentDO::getParentId, parentIds)
@@ -125,15 +124,15 @@ public class HotelCommentServiceImpl implements HotelCommentService {
         
         List<HotelCommentDO> children = commentMapper.selectList(childWrapper);
 
-        Map<Long, List<CommentVO>> groupedReplies = children.stream()
+        Map<Long, List<HotelCommentVO>> groupedReplies = children.stream()
                 .collect(Collectors.groupingBy(
                         HotelCommentDO::getParentId,
                         Collectors.mapping(this::convertToVO, Collectors.toList())
                 ));
 
         int maxRepliesToShow = 5;
-        for (CommentVO vo : voList) {
-            List<CommentVO> replies = groupedReplies.getOrDefault(vo.getId(), new ArrayList<>());
+        for (HotelCommentVO vo : voList) {
+            List<HotelCommentVO> replies = groupedReplies.getOrDefault(vo.getId(), new ArrayList<>());
             if (replies.size() > maxRepliesToShow) {
                 vo.setReplies(replies.subList(0, maxRepliesToShow));
             } else {
@@ -141,7 +140,7 @@ public class HotelCommentServiceImpl implements HotelCommentService {
             }
         }
 
-        Page<CommentVO> resultPage = new Page<>();
+        Page<HotelCommentVO> resultPage = new Page<>();
         resultPage.setCurrent(commentPage.getCurrent());
         resultPage.setSize(commentPage.getSize());
         resultPage.setTotal(commentPage.getTotal());
@@ -268,8 +267,8 @@ public class HotelCommentServiceImpl implements HotelCommentService {
         log.info("酒店 {} 评分已更新为：{}", hotelId, newScore);
     }
 
-    private CommentVO convertToVO(HotelCommentDO c) {
-        CommentVO bean = BeanUtils.toBean(c, CommentVO.class);
+    private HotelCommentVO convertToVO(HotelCommentDO c) {
+        HotelCommentVO bean = BeanUtils.toBean(c, HotelCommentVO.class);
         bean.setReplies(new ArrayList<>());
         return bean;
     }

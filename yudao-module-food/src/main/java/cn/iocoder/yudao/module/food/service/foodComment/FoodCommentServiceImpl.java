@@ -3,19 +3,17 @@ package cn.iocoder.yudao.module.food.service.foodComment;
 import cn.hutool.core.bean.BeanUtil;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
-import cn.iocoder.yudao.module.food.controller.admin.foodComment.dto.CommentCreateDTO;
-import cn.iocoder.yudao.module.food.controller.admin.foodComment.vo.CommentVO;
+import cn.iocoder.yudao.module.food.controller.admin.foodComment.dto.FoodCommentCreateDTO;
+import cn.iocoder.yudao.module.food.controller.admin.foodComment.vo.FoodCommentVO;
 import cn.iocoder.yudao.module.food.dal.dataobject.food.FoodDO;
 import cn.iocoder.yudao.module.food.dal.dataobject.foodComment.CommentDO;
 import cn.iocoder.yudao.module.food.dal.mysql.food.FoodMapper;
 import cn.iocoder.yudao.module.food.dal.mysql.foodComment.FoodCommentMapper;
-import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
 import cn.iocoder.yudao.module.system.dal.mysql.user.AdminUserMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.openxmlformats.schemas.spreadsheetml.x2006.main.CommentsDocument;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,7 +30,6 @@ import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.food.enums.ErrorCodeConstants.COMMENTS_NOT_WITH_SCORE;
-import static cn.iocoder.yudao.module.food.enums.ErrorCodeConstants.USER_STATUS_ERROR;
 
 @Slf4j
 @Service
@@ -52,7 +49,7 @@ public class FoodCommentServiceImpl implements FoodCommentService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void createComment(CommentCreateDTO dto) {
+    public void createComment(FoodCommentCreateDTO dto) {
         // 1. 校验美食是否存在
         FoodDO food = foodMapper.selectById(dto.getFoodId());
         if (food == null || food.getDeleted()) {
@@ -120,7 +117,7 @@ public class FoodCommentServiceImpl implements FoodCommentService {
     }
 
     @Override
-    public Page<CommentVO> getCommentTree(Long foodId, int page, int size) {
+    public Page<FoodCommentVO> getCommentTree(Long foodId, int page, int size) {
         // 1. 分页查询一级评论
         Page<CommentDO> pageParam = new Page<>(page, size);
         LambdaQueryWrapper<CommentDO> wrapper = new LambdaQueryWrapper<>();
@@ -134,7 +131,7 @@ public class FoodCommentServiceImpl implements FoodCommentService {
         List<CommentDO> records = commentPage.getRecords();
 
         if (CollectionUtils.isEmpty(records)) {
-            Page<CommentVO> emptyPage = new Page<>();
+            Page<FoodCommentVO> emptyPage = new Page<>();
             emptyPage.setCurrent(page);
             emptyPage.setSize(size);
             emptyPage.setTotal(0);
@@ -143,8 +140,8 @@ public class FoodCommentServiceImpl implements FoodCommentService {
         }
 
         // 2. 转换为 VO
-        List<CommentVO> voList = BeanUtil.copyToList(records, CommentVO.class);
-        List<Long> parentIds = voList.stream().map(CommentVO::getId).collect(Collectors.toList());
+        List<FoodCommentVO> voList = BeanUtil.copyToList(records, FoodCommentVO.class);
+        List<Long> parentIds = voList.stream().map(FoodCommentVO::getId).collect(Collectors.toList());
 
         // 3. 批量查询这些一级评论的子评论 (回复)
         // 策略：查出所有相关回复，在内存中分组。如果回复量极大，建议限制数量或使用单独接口加载
@@ -157,12 +154,12 @@ public class FoodCommentServiceImpl implements FoodCommentService {
         List<CommentDO> children = commentMapper.selectList(childWrapper);
 
         // 4. 内存组装：将回复分组到对应的父评论下
-        Map<Long, List<CommentVO>> replyMap = children.stream()
+        Map<Long, List<FoodCommentVO>> replyMap = children.stream()
                 .map(this::convertToVO)
-                .collect(Collectors.groupingBy(CommentVO::getParentId)); // 注意：VO中需要设置parentId才能这样group，或者用原Entity分组
+                .collect(Collectors.groupingBy(FoodCommentVO::getParentId)); // 注意：VO中需要设置parentId才能这样group，或者用原Entity分组
 
         // 修正：上面的 stream map 之后 VO 里可能没 parentId，我们用 Entity 分组更稳妥
-        Map<Long, List<CommentVO>> groupedReplies = children.stream()
+        Map<Long, List<FoodCommentVO>> groupedReplies = children.stream()
                 .collect(Collectors.groupingBy(
                         CommentDO::getParentId,
                         Collectors.mapping(this::convertToVO, Collectors.toList())
@@ -170,8 +167,8 @@ public class FoodCommentServiceImpl implements FoodCommentService {
 
         // 5. 填充回复列表到 VO，并限制每个父评论显示的回复数量 (例如最新5条)
         int maxRepliesToShow = 5;
-        for (CommentVO vo : voList) {
-            List<CommentVO> replies = groupedReplies.getOrDefault(vo.getId(), new ArrayList<>());
+        for (FoodCommentVO vo : voList) {
+            List<FoodCommentVO> replies = groupedReplies.getOrDefault(vo.getId(), new ArrayList<>());
             // 如果需要显示“共xx条回复”，可以单独查 count，这里直接用列表大小示意
             if (replies.size() > maxRepliesToShow) {
                 vo.setReplies(replies.subList(0, maxRepliesToShow));
@@ -182,7 +179,7 @@ public class FoodCommentServiceImpl implements FoodCommentService {
         }
 
         // 6. 构建返回的分页对象
-        Page<CommentVO> resultPage = new Page<>();
+        Page<FoodCommentVO> resultPage = new Page<>();
         resultPage.setCurrent(commentPage.getCurrent());
         resultPage.setSize(commentPage.getSize());
         resultPage.setTotal(commentPage.getTotal());
@@ -341,8 +338,8 @@ public class FoodCommentServiceImpl implements FoodCommentService {
     /**
      * 实体转 VO
      */
-    private CommentVO convertToVO(CommentDO c) {
-        CommentVO bean = BeanUtils.toBean(c, CommentVO.class);
+    private FoodCommentVO convertToVO(CommentDO c) {
+        FoodCommentVO bean = BeanUtils.toBean(c, FoodCommentVO.class);
         bean.setReplies(new ArrayList<>());
         return bean;
     }

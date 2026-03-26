@@ -1,7 +1,7 @@
 package cn.iocoder.yudao.module.food.service.foodComment;
 
-import cn.iocoder.yudao.module.food.controller.admin.foodComment.dto.CommentCreateDTO;
-import cn.iocoder.yudao.module.food.controller.admin.foodComment.vo.CommentVO;
+import cn.iocoder.yudao.module.food.controller.admin.foodComment.dto.FoodCommentCreateDTO;
+import cn.iocoder.yudao.module.food.controller.admin.foodComment.vo.FoodCommentVO;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
 
@@ -16,7 +16,7 @@ public interface FoodCommentService {
      * @param dto 评论数据传输对象
      *
      */
-    void createComment(CommentCreateDTO dto);
+    void createComment(FoodCommentCreateDTO dto);
 
     /**
      * 获取美食评论列表（树形结构）
@@ -27,7 +27,7 @@ public interface FoodCommentService {
      * @param size 每页大小
      * @return 分页后的评论VO列表
      */
-    Page<CommentVO> getCommentTree(Long foodId, int page, int size);
+    Page<FoodCommentVO> getCommentTree(Long foodId, int page, int size);
 
     /**
      * 点赞/取消点赞 (简化版：仅增加点赞数，实际生产需结合Redis防重)

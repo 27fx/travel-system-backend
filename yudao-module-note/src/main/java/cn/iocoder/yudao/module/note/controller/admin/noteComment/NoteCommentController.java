@@ -1,44 +1,49 @@
-package cn.iocoder.yudao.module.food.controller.admin.foodComment;
+package cn.iocoder.yudao.module.note.controller.admin.noteComment;
 
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
-import cn.iocoder.yudao.module.food.controller.admin.foodComment.dto.FoodCommentCreateDTO;
-import cn.iocoder.yudao.module.food.controller.admin.foodComment.vo.FoodCommentVO;
-import cn.iocoder.yudao.module.food.service.foodComment.FoodCommentService;
+import cn.iocoder.yudao.module.note.controller.admin.noteComment.dto.NoteCommentCreateDTO;
+import cn.iocoder.yudao.module.note.controller.admin.noteComment.vo.NoteCommentVO;
+import cn.iocoder.yudao.module.note.service.noteComment.NoteCommentService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.validation.Valid;
-// 假设有一个 UserContext 工具类获取当前登录用户ID
 
 @RestController
-@RequestMapping("/food/comments")
+@RequestMapping("/note/comments")
 @RequiredArgsConstructor
-public class FoodCommentController {
+public class NoteCommentController {
 
     @Resource
+    private NoteCommentService commentService;
 
-    private FoodCommentService commentService;
-
+    /**
+     * 创建评论
+     */
     @PostMapping
-    public CommonResult<Boolean> create(@Valid @RequestBody FoodCommentCreateDTO dto) {
-        // 从 Token 解析
+    public CommonResult<Boolean> create(@Valid @RequestBody NoteCommentCreateDTO dto) {
         commentService.createComment(dto);
         return CommonResult.success(true);
     }
 
-    @GetMapping("/food/{foodId}")
-    public CommonResult<Page<FoodCommentVO>> list(
-            @PathVariable Long foodId,
+    /**
+     * 获取评论树（分页）
+     */
+    @GetMapping("/note/{noteId}")
+    public CommonResult<Page<NoteCommentVO>> list(
+            @PathVariable Long noteId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Page<FoodCommentVO> voPage = commentService.getCommentTree(foodId, page, size);
+        Page<NoteCommentVO> voPage = commentService.getCommentTree(noteId, page, size);
         return CommonResult.success(voPage);
     }
 
+    /**
+     * 点赞/取消点赞
+     */
     @PostMapping("/{id}/like")
     public CommonResult<Boolean> like(@PathVariable Long id) {
         Long userId = SecurityFrameworkUtils.getLoginUserId();

@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
-public class CommentVO {
+public class HotelCommentVO {
     private Long id;
     private Long userId;
     private String userName;
@@ -18,7 +18,7 @@ public class CommentVO {
     private LocalDateTime createTime;
     private Long parentId;
     
-    private List<CommentVO> replies;
+    private List<HotelCommentVO> replies;
     
     private Integer replyCount;
 }
