@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.food.controller.admin.foodComment;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.food.controller.admin.foodComment.dto.FoodCommentCreateDTO;
+import cn.iocoder.yudao.module.food.controller.admin.foodComment.vo.FoodCommentListVO;
 import cn.iocoder.yudao.module.food.controller.admin.foodComment.vo.FoodCommentVO;
 import cn.iocoder.yudao.module.food.service.foodComment.FoodCommentService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -12,6 +13,8 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.validation.Valid;
+
+import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 // 假设有一个 UserContext 工具类获取当前登录用户ID
 
 @RestController
@@ -25,7 +28,6 @@ public class FoodCommentController {
 
     @PostMapping
     public CommonResult<Boolean> create(@Valid @RequestBody FoodCommentCreateDTO dto) {
-        // 从 Token 解析
         commentService.createComment(dto);
         return CommonResult.success(true);
     }
@@ -44,5 +46,13 @@ public class FoodCommentController {
         Long userId = SecurityFrameworkUtils.getLoginUserId();
         commentService.toggleLike(id, userId);
         return CommonResult.success(true);
+    }
+
+    @GetMapping("/getCommentChild/{commentId}")
+    public CommonResult<FoodCommentListVO> getChildComments(
+            @PathVariable Long commentId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return success(commentService.getChildComments(commentId, page, size));
     }
 }

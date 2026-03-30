@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.food.service.foodComment;
 
 import cn.iocoder.yudao.module.food.controller.admin.foodComment.dto.FoodCommentCreateDTO;
+import cn.iocoder.yudao.module.food.controller.admin.foodComment.vo.FoodCommentListVO;
 import cn.iocoder.yudao.module.food.controller.admin.foodComment.vo.FoodCommentVO;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
@@ -56,4 +57,6 @@ public interface FoodCommentService {
      * @param currentUserId 当前用户ID (用于权限校验)
      */
     void deleteComment(Long commentId, Long currentUserId);
+
+    FoodCommentListVO getChildComments(Long commentId, int page, int size);
 }

@@ -2,8 +2,8 @@ package cn.iocoder.yudao.module.route.controller.admin.routeComment;
 
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
-import cn.iocoder.yudao.module.route.controller.admin.routeComment.dto.CommentCreateDTO;
-import cn.iocoder.yudao.module.route.controller.admin.routeComment.vo.CommentVO;
+import cn.iocoder.yudao.module.route.controller.admin.routeComment.dto.RouteCommentCreateDTO;
+import cn.iocoder.yudao.module.route.controller.admin.routeComment.vo.RouteCommentVO;
 import cn.iocoder.yudao.module.route.service.routeComment.RouteCommentService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -21,18 +21,18 @@ public class RouteCommentController {
     private RouteCommentService commentService;
 
     @PostMapping
-    public CommonResult<Boolean> create(@Valid @RequestBody CommentCreateDTO dto) {
+    public CommonResult<Boolean> create(@Valid @RequestBody RouteCommentCreateDTO dto) {
         Long userId = SecurityFrameworkUtils.getLoginUserId();
         commentService.createComment(dto, userId);
         return CommonResult.success(true);
     }
 
     @GetMapping("/route/{routeId}")
-    public CommonResult<Page<CommentVO>> list(
+    public CommonResult<Page<RouteCommentVO>> list(
             @PathVariable Long routeId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Page<CommentVO> voPage = commentService.getCommentTree(routeId, page, size);
+        Page<RouteCommentVO> voPage = commentService.getCommentTree(routeId, page, size);
         return CommonResult.success(voPage);
     }
 
@@ -41,5 +41,13 @@ public class RouteCommentController {
         Long userId = SecurityFrameworkUtils.getLoginUserId();
         commentService.toggleLike(id, userId);
         return CommonResult.success(true);
+    }
+
+    @GetMapping("/getCommentChild/{commentId}")
+    public CommonResult<Page<RouteCommentVO>> getChildComments(
+            @PathVariable Long commentId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return CommonResult.success(commentService.getChildComments(commentId, page, size));
     }
 }

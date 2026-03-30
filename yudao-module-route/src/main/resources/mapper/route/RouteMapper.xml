@@ -15,6 +15,8 @@
         r.name,
         r.days,
         r.price,
+        r.introduction,
+        r.image,
         r.create_time AS createTime,
         u.nickname AS userNickname
         FROM route r
@@ -72,6 +74,8 @@
         r.name,
         r.days,
         r.price,
+        r.introduction,
+        r.image,
         r.create_time AS createTime,
         u.nickname AS userNickname
         FROM route r

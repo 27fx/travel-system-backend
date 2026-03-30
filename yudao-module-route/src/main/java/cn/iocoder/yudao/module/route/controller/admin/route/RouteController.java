@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.route.controller.admin.route;
 
+import cn.iocoder.yudao.module.system.service.user.AdminUserService;
 import org.springframework.web.bind.annotation.*;
 import javax.annotation.Resource;
 import org.springframework.validation.annotation.Validated;
@@ -39,6 +40,9 @@ public class RouteController {
     @Resource
     private RouteService routeService;
 
+    @Resource
+    private AdminUserService adminUserService;
+
     @PostMapping("/create")
     @Operation(summary = "创建旅游线路")
     @PreAuthorize("@ss.hasPermission('route:route:create')")
@@ -77,7 +81,9 @@ public class RouteController {
     @PreAuthorize("@ss.hasPermission('route:route:query')")
     public CommonResult<RouteRespVO> getRoute(@RequestParam("id") Long id) {
         RouteDO route = routeService.getRoute(id);
-        return success(BeanUtils.toBean(route, RouteRespVO.class));
+        RouteRespVO bean = BeanUtils.toBean(route, RouteRespVO.class);
+        bean.setUserNickname(adminUserService.getUser(Long.valueOf(route.getCreator())).getNickname());
+        return success(bean);
     }
 
     @GetMapping("/page")

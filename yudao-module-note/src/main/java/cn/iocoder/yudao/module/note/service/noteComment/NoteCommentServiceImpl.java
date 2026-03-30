@@ -4,6 +4,7 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.note.controller.admin.noteComment.dto.NoteCommentCreateDTO;
+import cn.iocoder.yudao.module.note.controller.admin.noteComment.vo.NoteCommentListVO;
 import cn.iocoder.yudao.module.note.controller.admin.noteComment.vo.NoteCommentVO;
 import cn.iocoder.yudao.module.note.dal.dataobject.noteComment.NoteCommentDO;
 import cn.iocoder.yudao.module.note.dal.mysql.noteComment.NoteCommentMapper;
@@ -48,13 +49,8 @@ public class NoteCommentServiceImpl implements NoteCommentService {
                 throw new IllegalArgumentException("父评论不存在或已被屏蔽/删除");
             }
             // 业务规则：回复不能带评分
-            dto.setScore(null);
-        } else {
-            // 业务规则：一级评论必须带评分
-            if (dto.getScore() == null || dto.getScore().compareTo(BigDecimal.ONE) < 0 || dto.getScore().compareTo(new BigDecimal("5")) > 0) {
-                throw exception(ErrorCodeConstants.NOTE_COMMENTS_NOT_WITH_SCORE);
-            }
         }
+
 
         // 2. 构建评论实体
         NoteCommentDO comment = new NoteCommentDO();
@@ -66,7 +62,9 @@ public class NoteCommentServiceImpl implements NoteCommentService {
         comment.setContent(dto.getContent());
         comment.setScore(dto.getScore());
         comment.setLikeCount(0);
-        comment.setStatus(0); // 默认待审核 (0)，实际可接入自动审核服务直接设为 1
+
+        //相关审核内容看下如何实现 TODO
+        comment.setStatus(1); // 默认待审核 (0)，实际可接入自动审核服务直接设为 1
 
         commentMapper.insert(comment);
 
@@ -75,7 +73,10 @@ public class NoteCommentServiceImpl implements NoteCommentService {
 
     @Override
     public Page<NoteCommentVO> getCommentTree(Long noteId, int page, int size) {
-        // 1. 分页查询一级评论
+        if (noteId == null || noteId <= 0) {
+            throw new IllegalArgumentException("笔记 ID 不能为空");
+        }
+
         Page<NoteCommentDO> pageParam = new Page<>(page, size);
         LambdaQueryWrapper<NoteCommentDO> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(NoteCommentDO::getNoteId, noteId)
@@ -96,39 +97,42 @@ public class NoteCommentServiceImpl implements NoteCommentService {
             return emptyPage;
         }
 
-        // 2. 转换为 VO
         List<NoteCommentVO> voList = BeanUtil.copyToList(records, NoteCommentVO.class);
-        List<Long> parentIds = voList.stream().map(NoteCommentVO::getId).collect(Collectors.toList());
+        List<Long> parentIds = voList.stream()
+                .map(NoteCommentVO::getId)
+                .collect(Collectors.toList());
 
-        // 3. 批量查询这些一级评论的子评论 (回复)
-        LambdaQueryWrapper<NoteCommentDO> childWrapper = new LambdaQueryWrapper<>();
-        childWrapper.in(NoteCommentDO::getParentId, parentIds)
-                .eq(NoteCommentDO::getStatus, 1)
-                .eq(NoteCommentDO::getDeleted, 0)
-                .orderByAsc(NoteCommentDO::getCreateTime);
-
-        List<NoteCommentDO> children = commentMapper.selectList(childWrapper);
-
-        // 4. 内存组装：将回复分组到对应的父评论下
-        Map<Long, List<NoteCommentVO>> groupedReplies = children.stream()
-                .collect(Collectors.groupingBy(
-                        NoteCommentDO::getParentId,
-                        Collectors.mapping(this::convertToVO, Collectors.toList())
-                ));
-
-        // 5. 填充回复列表到 VO，并限制每个父评论显示的回复数量 (例如最新 5 条)
-        int maxRepliesToShow = 5;
-        for (NoteCommentVO vo : voList) {
-            List<NoteCommentVO> replies = groupedReplies.getOrDefault(vo.getId(), new ArrayList<>());
-            if (replies.size() > maxRepliesToShow) {
-                vo.setReplies(replies.subList(0, maxRepliesToShow));
-            } else {
-                vo.setReplies(replies);
-            }
-            vo.setReplyCount(replies.size());
+        if (CollectionUtils.isEmpty(parentIds)) {
+            Page<NoteCommentVO> resultPage = new Page<>();
+            resultPage.setCurrent(commentPage.getCurrent());
+            resultPage.setSize(commentPage.getSize());
+            resultPage.setTotal(commentPage.getTotal());
+            resultPage.setRecords(voList);
+            return resultPage;
         }
 
-        // 6. 构建返回的分页对象
+        // 一次性查询所有回复记录并统计数量
+        LambdaQueryWrapper<NoteCommentDO> replyWrapper = new LambdaQueryWrapper<>();
+        replyWrapper.in(NoteCommentDO::getParentId, parentIds)
+                .eq(NoteCommentDO::getNoteId, noteId)
+                .eq(NoteCommentDO::getStatus, 1)
+                .eq(NoteCommentDO::getDeleted, 0);
+
+        List<NoteCommentDO> allReplies = commentMapper.selectList(replyWrapper);
+
+        // 使用 Stream 统计每个主评论的回复数
+        Map<Long, Long> replyCountMap = allReplies.stream()
+                .collect(Collectors.groupingBy(
+                        NoteCommentDO::getParentId,
+                        Collectors.counting()
+                ));
+
+        // 设置回复数量到 VO
+        for (NoteCommentVO vo : voList) {
+            Long count = replyCountMap.getOrDefault(vo.getId(), 0L);
+            vo.setReplyCount(count.intValue());
+        }
+
         Page<NoteCommentVO> resultPage = new Page<>();
         resultPage.setCurrent(commentPage.getCurrent());
         resultPage.setSize(commentPage.getSize());
@@ -136,6 +140,42 @@ public class NoteCommentServiceImpl implements NoteCommentService {
         resultPage.setRecords(voList);
 
         return resultPage;
+    }
+
+// ... existing code ...
+
+
+    @Override
+    public NoteCommentListVO getChildComments(Long commentId, int page, int size) {
+        if (commentId == null || commentId <= 0) {
+            throw new IllegalArgumentException("评论 ID 不能为空");
+        }
+
+        // 分页查询子评论
+        Page<NoteCommentDO> pageParam = new Page<>(page, size);
+        LambdaQueryWrapper<NoteCommentDO> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(NoteCommentDO::getParentId, commentId)
+                .eq(NoteCommentDO::getStatus, 1)
+                .eq(NoteCommentDO::getDeleted, 0)
+                .orderByAsc(NoteCommentDO::getCreateTime);
+
+        Page<NoteCommentDO> commentPage = commentMapper.selectPage(pageParam, wrapper);
+        List<NoteCommentDO> records = commentPage.getRecords();
+
+        // 转换为 VO
+        List<NoteCommentVO> voList;
+        if (CollectionUtils.isEmpty(records)) {
+            voList = new ArrayList<>();
+        } else {
+            voList = BeanUtil.copyToList(records, NoteCommentVO.class);
+        }
+
+        // 构建返回结果
+        NoteCommentListVO result = new NoteCommentListVO();
+        result.setCommentVOList(voList);
+        result.setReplyCount(commentPage.getTotal());
+
+        return result;
     }
 
     @Override

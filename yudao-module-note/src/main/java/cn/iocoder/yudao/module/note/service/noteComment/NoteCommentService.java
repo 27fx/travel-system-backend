@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.note.service.noteComment;
 
 import cn.iocoder.yudao.module.note.controller.admin.noteComment.dto.NoteCommentCreateDTO;
+import cn.iocoder.yudao.module.note.controller.admin.noteComment.vo.NoteCommentListVO;
 import cn.iocoder.yudao.module.note.controller.admin.noteComment.vo.NoteCommentVO;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
@@ -49,4 +50,7 @@ public interface NoteCommentService {
      * @param currentUserId 当前用户 ID
      */
     void deleteComment(Long commentId, Long currentUserId);
+
+    NoteCommentListVO getChildComments(Long commentId, int page, int size);
 }
+

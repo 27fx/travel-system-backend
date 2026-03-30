@@ -88,17 +88,4 @@ public class FoodController {
         return success(BeanUtils.toBean(pageResult, FoodRespVO.class));
     }
 
-    @GetMapping("/export-excel")
-    @Operation(summary = "导出美食信息 Excel")
-    @PreAuthorize("@ss.hasPermission('food:food:export')")
-    @ApiAccessLog(operateType = EXPORT)
-    public void exportFoodExcel(@Valid FoodPageReqVO pageReqVO,
-              HttpServletResponse response) throws IOException {
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<FoodDO> list = foodService.getFoodPage(pageReqVO).getList();
-        // 导出 Excel
-        ExcelUtils.write(response, "美食信息.xls", "数据", FoodRespVO.class,
-                        BeanUtils.toBean(list, FoodRespVO.class));
-    }
-
 }

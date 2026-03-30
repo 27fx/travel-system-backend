@@ -2,8 +2,8 @@ package cn.iocoder.yudao.module.route.service.routeComment;
 import cn.hutool.core.bean.BeanUtil;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
-import cn.iocoder.yudao.module.route.controller.admin.routeComment.dto.CommentCreateDTO;
-import cn.iocoder.yudao.module.route.controller.admin.routeComment.vo.CommentVO;
+import cn.iocoder.yudao.module.route.controller.admin.routeComment.dto.RouteCommentCreateDTO;
+import cn.iocoder.yudao.module.route.controller.admin.routeComment.vo.RouteCommentVO;
 import cn.iocoder.yudao.module.route.dal.dataobject.route.RouteDO;
 import cn.iocoder.yudao.module.route.dal.dataobject.routeComment.RouteCommentDO;
 import cn.iocoder.yudao.module.route.dal.mysql.route.RouteMapper;
@@ -19,7 +19,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,28 +42,15 @@ public class RouteCommentServiceImpl implements RouteCommentService {
     private static final String COMMENT_LIKE_KEY = "comment:like%d";
     private static final long LIKE_EXPIRE_DAYS = 30;
 
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void createComment(CommentCreateDTO dto, Long currentUserId) {
+    public void createComment(RouteCommentCreateDTO dto, Long currentUserId) {
         RouteDO route = routeMapper.selectById(dto.getRouteId());
         if (route == null || route.getDeleted()) {
             throw new IllegalArgumentException("线路不存在或已删除");
         }
-
-        AdminUserDO user = userMapper.selectById(currentUserId);
-        if (user == null || user.getStatus() == 1 || user.getDeleted()) {
-            throw exception(USER_STATUS_ERROR);
-        }
-
         if (dto.getParentId() != null && dto.getParentId() > 0) {
             RouteCommentDO parentComment = commentMapper.selectById(dto.getParentId());
             if (parentComment == null || parentComment.getStatus() != 1 || parentComment.getDeleted()) {
                 throw new IllegalArgumentException("父评论不存在或已被屏蔽/删除");
-            }
-            dto.setScore(null);
-        } else {
-            if (dto.getScore() == null || dto.getScore().compareTo(BigDecimal.ONE) < 0 || dto.getScore().compareTo(new BigDecimal("5")) > 0) {
-                throw new IllegalArgumentException("评分必须在 1-5 分之间");
             }
         }
 
@@ -75,7 +61,6 @@ public class RouteCommentServiceImpl implements RouteCommentService {
         comment.setUserAvatar(SecurityFrameworkUtils.getLoginUserAvatar());
         comment.setParentId(dto.getParentId() == null ? 0L : dto.getParentId());
         comment.setContent(dto.getContent());
-        comment.setScore(dto.getScore());
         comment.setLikeCount(0);
         comment.setStatus(1);
 
@@ -84,21 +69,24 @@ public class RouteCommentServiceImpl implements RouteCommentService {
         log.info("评论 {} 已创建", comment.getId());
     }
 
-    @Override
-    public Page<CommentVO> getCommentTree(Long routeId, int page, int size) {
+    public Page<RouteCommentVO> getCommentTree(Long routeId, int page, int size) {
+        if (routeId == null || routeId <= 0) {
+            throw new IllegalArgumentException("线路 ID 不能为空");
+        }
+
         Page<RouteCommentDO> pageParam = new Page<>(page, size);
         LambdaQueryWrapper<RouteCommentDO> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(RouteCommentDO::getRouteId, routeId)
-               .eq(RouteCommentDO::getParentId, 0)
-               .eq(RouteCommentDO::getStatus, 1)
-               .eq(RouteCommentDO::getDeleted, 0)
-               .orderByDesc(RouteCommentDO::getCreateTime);
+                .eq(RouteCommentDO::getParentId, 0)
+                .eq(RouteCommentDO::getStatus, 1)
+                .eq(RouteCommentDO::getDeleted, 0)
+                .orderByDesc(RouteCommentDO::getCreateTime);
 
         Page<RouteCommentDO> commentPage = commentMapper.selectPage(pageParam, wrapper);
         List<RouteCommentDO> records = commentPage.getRecords();
 
         if (CollectionUtils.isEmpty(records)) {
-            Page<CommentVO> emptyPage = new Page<>();
+            Page<RouteCommentVO> emptyPage = new Page<>();
             emptyPage.setCurrent(page);
             emptyPage.setSize(size);
             emptyPage.setTotal(0);
@@ -106,34 +94,41 @@ public class RouteCommentServiceImpl implements RouteCommentService {
             return emptyPage;
         }
 
-        List<CommentVO> voList = BeanUtil.copyToList(records, CommentVO.class);
-        List<Long> parentIds = voList.stream().map(CommentVO::getId).collect(Collectors.toList());
+        List<RouteCommentVO> voList = BeanUtil.copyToList(records, RouteCommentVO.class);
+        List<Long> parentIds = voList.stream()
+                .map(RouteCommentVO::getId)
+                .collect(Collectors.toList());
 
-        LambdaQueryWrapper<RouteCommentDO> childWrapper = new LambdaQueryWrapper<>();
-        childWrapper.in(RouteCommentDO::getParentId, parentIds)
-                    .eq(RouteCommentDO::getStatus, 1)
-                    .eq(RouteCommentDO::getDeleted, 0)
-                    .orderByAsc(RouteCommentDO::getCreateTime);
-        
-        List<RouteCommentDO> children = commentMapper.selectList(childWrapper);
-
-        Map<Long, List<CommentVO>> groupedReplies = children.stream()
-                .collect(Collectors.groupingBy(
-                        RouteCommentDO::getParentId,
-                        Collectors.mapping(this::convertToVO, Collectors.toList())
-                ));
-
-        int maxRepliesToShow = 5;
-        for (CommentVO vo : voList) {
-            List<CommentVO> replies = groupedReplies.getOrDefault(vo.getId(), new ArrayList<>());
-            if (replies.size() > maxRepliesToShow) {
-                vo.setReplies(replies.subList(0, maxRepliesToShow));
-            } else {
-                vo.setReplies(replies);
-            }
+        if (CollectionUtils.isEmpty(parentIds)) {
+            Page<RouteCommentVO> resultPage = new Page<>();
+            resultPage.setCurrent(commentPage.getCurrent());
+            resultPage.setSize(commentPage.getSize());
+            resultPage.setTotal(commentPage.getTotal());
+            resultPage.setRecords(voList);
+            return resultPage;
         }
 
-        Page<CommentVO> resultPage = new Page<>();
+        LambdaQueryWrapper<RouteCommentDO> replyWrapper = new LambdaQueryWrapper<>();
+        replyWrapper.in(RouteCommentDO::getParentId, parentIds)
+                .eq(RouteCommentDO::getRouteId, routeId)
+                .eq(RouteCommentDO::getStatus, 1)
+                .eq(RouteCommentDO::getDeleted, 0);
+
+        List<RouteCommentDO> allReplies = commentMapper.selectList(replyWrapper);
+
+        Map<Long, Long> replyCountMap = allReplies.stream()
+                .collect(Collectors.groupingBy(
+                        RouteCommentDO::getParentId,
+                        Collectors.counting()
+                ));
+
+        for (RouteCommentVO vo : voList) {
+            Long count = replyCountMap.getOrDefault(vo.getId(), 0L);
+            vo.setReplyCount(count.intValue());
+            vo.setReplies(new ArrayList<>());
+        }
+
+        Page<RouteCommentVO> resultPage = new Page<>();
         resultPage.setCurrent(commentPage.getCurrent());
         resultPage.setSize(commentPage.getSize());
         resultPage.setTotal(commentPage.getTotal());
@@ -142,8 +137,6 @@ public class RouteCommentServiceImpl implements RouteCommentService {
         return resultPage;
     }
 
-    @Override
-    @Transactional(rollbackFor = Exception.class)
     public void toggleLike(Long commentId, Long currentUserId) {
         RouteCommentDO comment = commentMapper.selectById(commentId);
         if (comment == null || comment.getDeleted()) {
@@ -171,8 +164,6 @@ public class RouteCommentServiceImpl implements RouteCommentService {
         commentMapper.updateById(comment);
     }
 
-    @Override
-    @Transactional(rollbackFor = Exception.class)
     public void auditComment(Long commentId, Integer status, String operator) {
         if (status != 1 && status != 2) {
             throw new IllegalArgumentException("状态值非法，只能是 1(通过) 或 2(驳回)");
@@ -186,14 +177,12 @@ public class RouteCommentServiceImpl implements RouteCommentService {
         comment.setStatus(status);
         comment.setUpdater(operator);
         comment.setUpdateTime(LocalDateTime.now());
-        
+
         commentMapper.updateById(comment);
 
         log.info("评论 {} 审核状态已更新为：{}", commentId, status);
     }
 
-    @Override
-    @Transactional(rollbackFor = Exception.class)
     public void deleteComment(Long commentId, Long currentUserId) {
         RouteCommentDO comment = commentMapper.selectById(commentId);
         if (comment == null || comment.getDeleted()) {
@@ -201,7 +190,7 @@ public class RouteCommentServiceImpl implements RouteCommentService {
         }
 
         if (!comment.getUserId().equals(currentUserId)) {
-             // throw new AccessDeniedException("无权限删除该评论");
+            // throw new AccessDeniedException("无权限删除该评论");
         }
 
         if (comment.getParentId() == 0) {
@@ -226,8 +215,45 @@ public class RouteCommentServiceImpl implements RouteCommentService {
         log.info("评论 {} 已删除", commentId);
     }
 
-    private CommentVO convertToVO(RouteCommentDO c) {
-        CommentVO bean = BeanUtils.toBean(c, CommentVO.class);
+    public Page<RouteCommentVO> getChildComments(Long commentId, int page, int size) {
+        if (commentId == null || commentId <= 0) {
+            throw new IllegalArgumentException("评论 ID 不能为空");
+        }
+
+        Page<RouteCommentDO> pageParam = new Page<>(page, size);
+        LambdaQueryWrapper<RouteCommentDO> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(RouteCommentDO::getParentId, commentId)
+                .eq(RouteCommentDO::getStatus, 1)
+                .eq(RouteCommentDO::getDeleted, 0)
+                .orderByAsc(RouteCommentDO::getCreateTime);
+
+        Page<RouteCommentDO> commentPage = commentMapper.selectPage(pageParam, wrapper);
+        List<RouteCommentDO> records = commentPage.getRecords();
+
+        List<RouteCommentVO> voList;
+        if (CollectionUtils.isEmpty(records)) {
+            voList = new ArrayList<>();
+        } else {
+            voList = BeanUtil.copyToList(records, RouteCommentVO.class);
+            for (RouteCommentVO vo : voList) {
+                if (vo != null) {
+                    vo.setReplies(new ArrayList<>());
+                    vo.setReplyCount(0);
+                }
+            }
+        }
+
+        Page<RouteCommentVO> resultPage = new Page<>();
+        resultPage.setCurrent(commentPage.getCurrent());
+        resultPage.setSize(commentPage.getSize());
+        resultPage.setTotal(commentPage.getTotal());
+        resultPage.setRecords(voList);
+
+        return resultPage;
+    }
+
+    private RouteCommentVO convertToVO(RouteCommentDO c) {
+        RouteCommentVO bean = BeanUtils.toBean(c, RouteCommentVO.class);
         bean.setReplies(new ArrayList<>());
         return bean;
     }

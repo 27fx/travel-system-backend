@@ -33,6 +33,9 @@ public class RouteRespVO {
     @ExcelProperty("线路简介")
     private String introduction;
 
+    @Schema(description = "线路描述")
+     private String description;
+
     @Schema(description = "线路图片")
     @ExcelProperty("线路图片")
     private String image;
@@ -41,4 +44,8 @@ public class RouteRespVO {
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
 
-}
+    @Schema(description = "创建用户")
+    @ExcelProperty("创建用户")
+    private String userNickname;
+
+}

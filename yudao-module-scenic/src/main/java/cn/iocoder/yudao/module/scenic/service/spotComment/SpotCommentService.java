@@ -1,20 +1,20 @@
-
 package cn.iocoder.yudao.module.scenic.service.spotComment;
 
-import cn.iocoder.yudao.module.scenic.controller.admin.spotComment.dto.CommentCreateDTO;
-import cn.iocoder.yudao.module.scenic.controller.admin.spotComment.vo.CommentVO;
-import cn.iocoder.yudao.module.scenic.dal.dataobject.spotComment.SpotCommentDO;
+import cn.iocoder.yudao.module.scenic.controller.admin.spotComment.dto.SpotCommentCreateDTO;
+import cn.iocoder.yudao.module.scenic.controller.admin.spotComment.vo.SpotCommentVO;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
 public interface SpotCommentService {
 
-    void createComment(CommentCreateDTO dto, Long currentUserId);
+    void createComment(SpotCommentCreateDTO dto, Long currentUserId);
 
-    Page<CommentVO> getCommentTree(Long spotId, int page, int size);
+    Page<SpotCommentVO> getCommentTree(Long spotId, int page, int size);
 
     void toggleLike(Long commentId, Long currentUserId);
 
     void auditComment(Long commentId, Integer status, String operator);
 
     void deleteComment(Long commentId, Long currentUserId);
+
+    Page<SpotCommentVO> getChildComments(Long commentId, int page, int size);
 }

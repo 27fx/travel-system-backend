@@ -3,6 +3,7 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.hotel.controller.admin.hotelComment.dto.HotelCommentCreateDTO;
+import cn.iocoder.yudao.module.hotel.controller.admin.hotelComment.vo.HotelCommentListVO;
 import cn.iocoder.yudao.module.hotel.controller.admin.hotelComment.vo.HotelCommentVO;
 import cn.iocoder.yudao.module.hotel.dal.dataobject.hotel.HotelDO;
 import cn.iocoder.yudao.module.hotel.dal.dataobject.hotelComment.HotelCommentDO;
@@ -22,9 +23,7 @@ import org.springframework.util.CollectionUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -46,17 +45,11 @@ public class HotelCommentServiceImpl implements HotelCommentService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void createComment(HotelCommentCreateDTO dto, Long currentUserId) {
+    public void createComment(HotelCommentCreateDTO dto) {
         HotelDO hotel = hotelMapper.selectById(dto.getHotelId());
         if (hotel == null || hotel.getDeleted()) {
             throw new IllegalArgumentException("酒店不存在或已删除");
         }
-
-        AdminUserDO user = userMapper.selectById(currentUserId);
-        if (user == null || user.getStatus() == 1 || user.getDeleted()) {
-            throw exception(USER_STATUS_ERROR);
-        }
-
         if (dto.getParentId() != null && dto.getParentId() > 0) {
             HotelCommentDO parentComment = commentMapper.selectById(dto.getParentId());
             if (parentComment == null || parentComment.getStatus() != 1 || parentComment.getDeleted()) {
@@ -78,7 +71,7 @@ public class HotelCommentServiceImpl implements HotelCommentService {
         comment.setContent(dto.getContent());
         comment.setScore(dto.getScore());
         comment.setLikeCount(0);
-        comment.setStatus(0);
+        comment.setStatus(1);
 
         commentMapper.insert(comment);
 
@@ -93,13 +86,17 @@ public class HotelCommentServiceImpl implements HotelCommentService {
 
     @Override
     public Page<HotelCommentVO> getCommentTree(Long hotelId, int page, int size) {
+        if (hotelId == null || hotelId <= 0) {
+            throw new IllegalArgumentException("酒店 ID 不能为空");
+        }
+
         Page<HotelCommentDO> pageParam = new Page<>(page, size);
         LambdaQueryWrapper<HotelCommentDO> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(HotelCommentDO::getHotelId, hotelId)
-               .eq(HotelCommentDO::getParentId, 0)
-               .eq(HotelCommentDO::getStatus, 1)
-               .eq(HotelCommentDO::getDeleted, 0)
-               .orderByDesc(HotelCommentDO::getCreateTime);
+                .eq(HotelCommentDO::getParentId, 0)
+                .eq(HotelCommentDO::getStatus, 1)
+                .eq(HotelCommentDO::getDeleted, 0)
+                .orderByDesc(HotelCommentDO::getCreateTime);
 
         Page<HotelCommentDO> commentPage = commentMapper.selectPage(pageParam, wrapper);
         List<HotelCommentDO> records = commentPage.getRecords();
@@ -114,30 +111,40 @@ public class HotelCommentServiceImpl implements HotelCommentService {
         }
 
         List<HotelCommentVO> voList = BeanUtil.copyToList(records, HotelCommentVO.class);
-        List<Long> parentIds = voList.stream().map(HotelCommentVO::getId).collect(Collectors.toList());
+        List<Long> parentIds = voList.stream()
+                .map(HotelCommentVO::getId)
+                .collect(Collectors.toList());
 
-        LambdaQueryWrapper<HotelCommentDO> childWrapper = new LambdaQueryWrapper<>();
-        childWrapper.in(HotelCommentDO::getParentId, parentIds)
-                    .eq(HotelCommentDO::getStatus, 1)
-                    .eq(HotelCommentDO::getDeleted, 0)
-                    .orderByAsc(HotelCommentDO::getCreateTime);
-        
-        List<HotelCommentDO> children = commentMapper.selectList(childWrapper);
+        if (CollectionUtils.isEmpty(parentIds)) {
+            Page<HotelCommentVO> resultPage = new Page<>();
+            resultPage.setCurrent(commentPage.getCurrent());
+            resultPage.setSize(commentPage.getSize());
+            resultPage.setTotal(commentPage.getTotal());
+            resultPage.setRecords(voList);
+            return resultPage;
+        }
 
-        Map<Long, List<HotelCommentVO>> groupedReplies = children.stream()
+        // 一次性查询所有回复记录
+        LambdaQueryWrapper<HotelCommentDO> replyWrapper = new LambdaQueryWrapper<>();
+        replyWrapper.in(HotelCommentDO::getParentId, parentIds)
+                .eq(HotelCommentDO::getHotelId, hotelId)
+                .eq(HotelCommentDO::getStatus, 1)
+                .eq(HotelCommentDO::getDeleted, 0);
+
+        List<HotelCommentDO> allReplies = commentMapper.selectList(replyWrapper);
+
+        // 使用 Stream 统计每个主评论的回复数
+        Map<Long, Long> replyCountMap = allReplies.stream()
                 .collect(Collectors.groupingBy(
                         HotelCommentDO::getParentId,
-                        Collectors.mapping(this::convertToVO, Collectors.toList())
+                        Collectors.counting()
                 ));
 
-        int maxRepliesToShow = 5;
+        // 设置回复数量到 VO
         for (HotelCommentVO vo : voList) {
-            List<HotelCommentVO> replies = groupedReplies.getOrDefault(vo.getId(), new ArrayList<>());
-            if (replies.size() > maxRepliesToShow) {
-                vo.setReplies(replies.subList(0, maxRepliesToShow));
-            } else {
-                vo.setReplies(replies);
-            }
+            Long count = replyCountMap.getOrDefault(vo.getId(), 0L);
+            vo.setReplyCount(count.intValue());
+            vo.setReplies(new ArrayList<>());
         }
 
         Page<HotelCommentVO> resultPage = new Page<>();
@@ -148,6 +155,12 @@ public class HotelCommentServiceImpl implements HotelCommentService {
 
         return resultPage;
     }
+// ... existing code ...
+
+// ... existing code ...
+
+// ... existing code ...
+
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -241,6 +254,62 @@ public class HotelCommentServiceImpl implements HotelCommentService {
             recalculateHotelScore(comment.getHotelId());
         }
     }
+
+    //获取子评论
+    // ... existing code ...
+
+
+    @Override
+    public Long getCommentReplyCount(Long commentId) {
+        return commentMapper.selectCount(new LambdaQueryWrapper<HotelCommentDO>()
+                .eq(HotelCommentDO::getParentId, commentId)
+                .eq(HotelCommentDO::getStatus, 1)
+                .eq(HotelCommentDO::getDeleted, 0));
+    }
+
+    @Override
+    public HotelCommentListVO getChildComments(Long commentId, int page, int size) {
+        if (commentId == null || commentId <= 0) {
+            throw new IllegalArgumentException("评论 ID 不能为空");
+        }
+
+        // 分页查询子评论
+        Page<HotelCommentDO> pageParam = new Page<>(page, size);
+        LambdaQueryWrapper<HotelCommentDO> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(HotelCommentDO::getParentId, commentId)
+                .eq(HotelCommentDO::getStatus, 1)
+                .eq(HotelCommentDO::getDeleted, 0)
+                .orderByAsc(HotelCommentDO::getCreateTime);
+
+        Page<HotelCommentDO> commentPage = commentMapper.selectPage(pageParam, wrapper);
+        List<HotelCommentDO> records = commentPage.getRecords();
+
+        // 转换为 VO
+        List<HotelCommentVO> voList;
+        if (CollectionUtils.isEmpty(records)) {
+            voList = new ArrayList<>();
+        } else {
+            voList = BeanUtil.copyToList(records, HotelCommentVO.class);
+            // 子评论的 replies 设为空列表
+            for (HotelCommentVO vo : voList) {
+                if (vo != null) {
+                    vo.setReplies(new ArrayList<>());
+                    vo.setReplyCount(0);
+                }
+            }
+        }
+
+        // 构建返回结果
+        HotelCommentListVO result = new HotelCommentListVO();
+        result.setCommentVOList(voList);
+        result.setReplyCount(commentPage.getTotal());
+
+        return result;
+    }
+// ... existing code ...
+
+// ... existing code ...
+
 
     private void recalculateHotelScore(Long hotelId) {
         LambdaQueryWrapper<HotelCommentDO> wrapper = new LambdaQueryWrapper<>();

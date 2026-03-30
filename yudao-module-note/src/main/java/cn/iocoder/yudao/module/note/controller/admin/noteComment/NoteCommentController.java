@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.note.controller.admin.noteComment;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.note.controller.admin.noteComment.dto.NoteCommentCreateDTO;
+import cn.iocoder.yudao.module.note.controller.admin.noteComment.vo.NoteCommentListVO;
 import cn.iocoder.yudao.module.note.controller.admin.noteComment.vo.NoteCommentVO;
 import cn.iocoder.yudao.module.note.service.noteComment.NoteCommentService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -49,5 +50,13 @@ public class NoteCommentController {
         Long userId = SecurityFrameworkUtils.getLoginUserId();
         commentService.toggleLike(id, userId);
         return CommonResult.success(true);
+    }
+
+    @GetMapping("/getCommentChild/{commentId}")
+    public CommonResult<NoteCommentListVO> getChildComments(
+            @PathVariable Long commentId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return CommonResult.success(commentService.getChildComments(commentId, page, size));
     }
 }

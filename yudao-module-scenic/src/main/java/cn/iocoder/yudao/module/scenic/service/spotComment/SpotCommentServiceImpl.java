@@ -3,13 +3,13 @@ package cn.iocoder.yudao.module.scenic.service.spotComment;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
-import cn.iocoder.yudao.module.scenic.controller.admin.spotComment.dto.CommentCreateDTO;
-import cn.iocoder.yudao.module.scenic.controller.admin.spotComment.vo.CommentVO;
+import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
+import cn.iocoder.yudao.module.scenic.controller.admin.spotComment.dto.SpotCommentCreateDTO;
+import cn.iocoder.yudao.module.scenic.controller.admin.spotComment.vo.SpotCommentVO;
 import cn.iocoder.yudao.module.scenic.dal.dataobject.spot.SpotDO;
 import cn.iocoder.yudao.module.scenic.dal.dataobject.spotComment.SpotCommentDO;
 import cn.iocoder.yudao.module.scenic.dal.mysql.spot.SpotMapper;
 import cn.iocoder.yudao.module.scenic.dal.mysql.spotComment.SpotCommentMapper;
-import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
 import cn.iocoder.yudao.module.system.dal.mysql.user.AdminUserMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -47,17 +47,11 @@ public class SpotCommentServiceImpl implements SpotCommentService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void createComment(CommentCreateDTO dto, Long currentUserId) {
+    public void createComment(SpotCommentCreateDTO dto, Long currentUserId) {
         SpotDO spot = spotMapper.selectById(dto.getSpotId());
         if (spot == null || spot.getDeleted()) {
             throw new IllegalArgumentException("景点不存在或已删除");
         }
-
-        AdminUserDO user = userMapper.selectById(currentUserId);
-        if (user == null || user.getStatus() == 1 || user.getDeleted()) {
-            throw exception(USER_STATUS_ERROR);
-        }
-
         if (dto.getParentId() != null && dto.getParentId() > 0) {
             SpotCommentDO parentComment = commentMapper.selectById(dto.getParentId());
             if (parentComment == null || parentComment.getStatus() != 1 || parentComment.getDeleted()) {
@@ -66,48 +60,48 @@ public class SpotCommentServiceImpl implements SpotCommentService {
             dto.setScore(null);
         } else {
             if (dto.getScore() == null || dto.getScore().compareTo(BigDecimal.ONE) < 0 || dto.getScore().compareTo(new BigDecimal("5")) > 0) {
-                throw exception(SPOT_COMMENT_STATUS_ERROR);
+                throw exception(COMMENTS_NOT_WITH_SCORE);
             }
         }
 
         SpotCommentDO comment = new SpotCommentDO();
         comment.setSpotId(dto.getSpotId());
-        comment.setUserId(currentUserId);
-        comment.setUserName(user.getNickname());
-        comment.setUserAvatar(user.getAvatar());
+        comment.setUserId(SecurityFrameworkUtils.getLoginUserId());
+        comment.setUserName(SecurityFrameworkUtils.getLoginUserNickname());
+        comment.setUserAvatar(SecurityFrameworkUtils.getLoginUserAvatar());
         comment.setParentId(dto.getParentId() == null ? 0L : dto.getParentId());
         comment.setContent(dto.getContent());
         comment.setScore(dto.getScore());
         comment.setLikeCount(0);
-        comment.setStatus(0);
-        comment.setCreator(user.getNickname());
+        comment.setStatus(1);
 
         commentMapper.insert(comment);
 
         if (comment.getParentId() == 0 && comment.getScore() != null) {
-            comment.setStatus(1);
-            commentMapper.updateById(comment);
             recalculateSpotScore(dto.getSpotId());
-            
-            log.info("评论 {} 已创建，待审核后更新景点 {} 的评分", comment.getId(), dto.getSpotId());
+            log.info("评论 {} 已创建，已更新景点 {} 的评分", comment.getId(), dto.getSpotId());
         }
     }
 
     @Override
-    public Page<CommentVO> getCommentTree(Long spotId, int page, int size) {
+    public Page<SpotCommentVO> getCommentTree(Long spotId, int page, int size) {
+        if (spotId == null || spotId <= 0) {
+            throw new IllegalArgumentException("景点 ID 不能为空");
+        }
+
         Page<SpotCommentDO> pageParam = new Page<>(page, size);
         LambdaQueryWrapper<SpotCommentDO> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SpotCommentDO::getSpotId, spotId)
-               .eq(SpotCommentDO::getParentId, 0)
-               .eq(SpotCommentDO::getStatus, 1)
-               .eq(SpotCommentDO::getDeleted, 0)
-               .orderByDesc(SpotCommentDO::getCreateTime);
+                .eq(SpotCommentDO::getParentId, 0)
+                .eq(SpotCommentDO::getStatus, 1)
+                .eq(SpotCommentDO::getDeleted, 0)
+                .orderByDesc(SpotCommentDO::getCreateTime);
 
         Page<SpotCommentDO> commentPage = commentMapper.selectPage(pageParam, wrapper);
         List<SpotCommentDO> records = commentPage.getRecords();
 
         if (CollectionUtils.isEmpty(records)) {
-            Page<CommentVO> emptyPage = new Page<>();
+            Page<SpotCommentVO> emptyPage = new Page<>();
             emptyPage.setCurrent(page);
             emptyPage.setSize(size);
             emptyPage.setTotal(0);
@@ -115,34 +109,41 @@ public class SpotCommentServiceImpl implements SpotCommentService {
             return emptyPage;
         }
 
-        List<CommentVO> voList = BeanUtil.copyToList(records, CommentVO.class);
-        List<Long> parentIds = voList.stream().map(CommentVO::getId).collect(Collectors.toList());
+        List<SpotCommentVO> voList = BeanUtil.copyToList(records, SpotCommentVO.class);
+        List<Long> parentIds = voList.stream()
+                .map(SpotCommentVO::getId)
+                .collect(Collectors.toList());
 
-        LambdaQueryWrapper<SpotCommentDO> childWrapper = new LambdaQueryWrapper<>();
-        childWrapper.in(SpotCommentDO::getParentId, parentIds)
-                    .eq(SpotCommentDO::getStatus, 1)
-                    .eq(SpotCommentDO::getDeleted, 0)
-                    .orderByAsc(SpotCommentDO::getCreateTime);
-        
-        List<SpotCommentDO> children = commentMapper.selectList(childWrapper);
-
-        Map<Long, List<CommentVO>> groupedReplies = children.stream()
-                .collect(Collectors.groupingBy(
-                        SpotCommentDO::getParentId,
-                        Collectors.mapping(this::convertToVO, Collectors.toList())
-                ));
-
-        int maxRepliesToShow = 5;
-        for (CommentVO vo : voList) {
-            List<CommentVO> replies = groupedReplies.getOrDefault(vo.getId(), new ArrayList<>());
-            if (replies.size() > maxRepliesToShow) {
-                vo.setReplies(replies.subList(0, maxRepliesToShow));
-            } else {
-                vo.setReplies(replies);
-            }
+        if (CollectionUtils.isEmpty(parentIds)) {
+            Page<SpotCommentVO> resultPage = new Page<>();
+            resultPage.setCurrent(commentPage.getCurrent());
+            resultPage.setSize(commentPage.getSize());
+            resultPage.setTotal(commentPage.getTotal());
+            resultPage.setRecords(voList);
+            return resultPage;
         }
 
-        Page<CommentVO> resultPage = new Page<>();
+        LambdaQueryWrapper<SpotCommentDO> replyWrapper = new LambdaQueryWrapper<>();
+        replyWrapper.in(SpotCommentDO::getParentId, parentIds)
+                .eq(SpotCommentDO::getSpotId, spotId)
+                .eq(SpotCommentDO::getStatus, 1)
+                .eq(SpotCommentDO::getDeleted, 0);
+
+        List<SpotCommentDO> allReplies = commentMapper.selectList(replyWrapper);
+
+        Map<Long, Long> replyCountMap = allReplies.stream()
+                .collect(Collectors.groupingBy(
+                        SpotCommentDO::getParentId,
+                        Collectors.counting()
+                ));
+
+        for (SpotCommentVO vo : voList) {
+            Long count = replyCountMap.getOrDefault(vo.getId(), 0L);
+            vo.setReplyCount(count.intValue());
+            vo.setReplies(new ArrayList<>());
+        }
+
+        Page<SpotCommentVO> resultPage = new Page<>();
         resultPage.setCurrent(commentPage.getCurrent());
         resultPage.setSize(commentPage.getSize());
         resultPage.setTotal(commentPage.getTotal());
@@ -196,16 +197,18 @@ public class SpotCommentServiceImpl implements SpotCommentService {
         comment.setStatus(status);
         comment.setUpdater(operator);
         comment.setUpdateTime(LocalDateTime.now());
-        
-        boolean updated = commentMapper.updateById(comment) > 0;
 
-        if (updated && oldStatus != status) {
+        commentMapper.updateById(comment);
+
+        if (oldStatus != status) {
             if (status == 1 && comment.getParentId() == 0 && comment.getScore() != null) {
                 recalculateSpotScore(comment.getSpotId());
             } else if (oldStatus == 1 && comment.getParentId() == 0 && comment.getScore() != null) {
                 recalculateSpotScore(comment.getSpotId());
             }
         }
+
+        log.info("评论 {} 审核状态已更新为：{}", commentId, status);
     }
 
     @Override
@@ -217,7 +220,7 @@ public class SpotCommentServiceImpl implements SpotCommentService {
         }
 
         if (!comment.getUserId().equals(currentUserId)) {
-             // throw new AccessDeniedException("无权限删除该评论");
+            // throw new AccessDeniedException("无权限删除该评论");
         }
 
         if (comment.getParentId() == 0) {
@@ -242,8 +245,58 @@ public class SpotCommentServiceImpl implements SpotCommentService {
         if (comment.getParentId() == 0 && comment.getScore() != null) {
             recalculateSpotScore(comment.getSpotId());
         }
+
+        log.info("评论 {} 已删除", commentId);
     }
 
+    @Override
+    public Page<SpotCommentVO> getChildComments(Long commentId, int page, int size) {
+        if (commentId == null || commentId <= 0) {
+            throw new IllegalArgumentException("评论 ID 不能为空");
+        }
+
+        Page<SpotCommentDO> pageParam = new Page<>(page, size);
+        LambdaQueryWrapper<SpotCommentDO> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SpotCommentDO::getParentId, commentId)
+                .eq(SpotCommentDO::getStatus, 1)
+                .eq(SpotCommentDO::getDeleted, 0)
+                .orderByAsc(SpotCommentDO::getCreateTime);
+
+        Page<SpotCommentDO> commentPage = commentMapper.selectPage(pageParam, wrapper);
+        List<SpotCommentDO> records = commentPage.getRecords();
+
+        List<SpotCommentVO> voList;
+        if (CollectionUtils.isEmpty(records)) {
+            voList = new ArrayList<>();
+        } else {
+            voList = BeanUtil.copyToList(records, SpotCommentVO.class);
+            for (SpotCommentVO vo : voList) {
+                if (vo != null) {
+                    vo.setReplies(new ArrayList<>());
+                    vo.setReplyCount(0);
+                }
+            }
+        }
+
+        Page<SpotCommentVO> resultPage = new Page<>();
+        resultPage.setCurrent(commentPage.getCurrent());
+        resultPage.setSize(commentPage.getSize());
+        resultPage.setTotal(commentPage.getTotal());
+        resultPage.setRecords(voList);
+
+        return resultPage;
+    }
+
+    private SpotCommentVO convertToVO(SpotCommentDO c) {
+        SpotCommentVO vo = BeanUtils.toBean(c, SpotCommentVO.class);
+        vo.setReplies(new ArrayList<>());
+        return vo;
+    }
+
+    /**
+     * 重新计算景点评分
+     * 只统计一级评论、状态正常、未删除的带评分评论
+     */
     private void recalculateSpotScore(Long spotId) {
         LambdaQueryWrapper<SpotCommentDO> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SpotCommentDO::getSpotId, spotId)
@@ -265,22 +318,7 @@ public class SpotCommentServiceImpl implements SpotCommentService {
         spot.setId(spotId);
         spot.setScore(newScore);
         spotMapper.updateById(spot);
-        
-        log.info("景点 {} 评分已更新为：{}", spotId, newScore);
-    }
 
-    private CommentVO convertToVO(SpotCommentDO c) {
-        CommentVO vo = new CommentVO();
-        vo.setId(c.getId());
-        vo.setUserId(c.getUserId());
-        vo.setUserName(c.getUserName());
-        vo.setUserAvatar(c.getUserAvatar());
-        vo.setContent(c.getContent());
-        vo.setScore(c.getScore());
-        vo.setLikeCount(c.getLikeCount());
-        vo.setCreateTime(c.getCreateTime());
-        vo.setParentId(c.getParentId());
-        vo.setReplies(new ArrayList<>());
-        return vo;
+        log.info("景点 {} 评分已更新为：{}", spotId, newScore);
     }
 }

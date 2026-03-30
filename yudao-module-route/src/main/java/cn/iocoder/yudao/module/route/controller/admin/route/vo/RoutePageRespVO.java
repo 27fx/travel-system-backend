@@ -26,6 +26,12 @@ public class RoutePageRespVO {
     @ExcelProperty("线路价格")
     private BigDecimal price;
 
+    @Schema(description = "线路简介")
+    private String introduction;
+
+    @Schema(description = "线路图片")
+    private String image;
+
     @Schema(description = "发表用户")
     @ExcelProperty("发表用户")
     private String userNickname;
